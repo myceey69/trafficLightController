@@ -1,0 +1,3 @@
+# Core DFA needs NOTHING. These are only for the optional parts.
+simpy>=4.0
+pygame>=2.5

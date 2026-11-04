@@ -1,0 +1,24 @@
+digraph M {
+rankdir=LR;
+node [shape=circle,fontsize=11];
+start [shape=point]; start -> Red;
+Red [shape=doublecircle,style=filled,fillcolor="#ffffff"];
+Green [shape=doublecircle,style=filled,fillcolor="#ffffff"];
+Yellow [shape=circle,style=filled,fillcolor="#ffffff"];
+Emergency_Active [shape=doublecircle,style=filled,fillcolor="#ffd6d6"];
+Emergency_Cleared [shape=circle,style=filled,fillcolor="#ffd6d6"];
+Red -> Green [label="timer",fontsize=9];
+Green -> Yellow [label="timer",fontsize=9];
+Yellow -> Red [label="timer",fontsize=9];
+Red -> Emergency_Active [label="emergency_trigger",fontsize=9];
+Green -> Emergency_Active [label="emergency_trigger",fontsize=9];
+Yellow -> Emergency_Active [label="emergency_trigger",fontsize=9];
+Emergency_Active -> Emergency_Active [label="timer, sensor, emergency_trigger",fontsize=9];
+Emergency_Active -> Emergency_Cleared [label="emergency_clear",fontsize=9];
+Emergency_Cleared -> Red [label="timer",fontsize=9];
+Red -> Red [label="sensor, emergency_clear",fontsize=9];
+Green -> Green [label="sensor, emergency_clear",fontsize=9];
+Yellow -> Yellow [label="sensor, emergency_clear",fontsize=9];
+Emergency_Cleared -> Emergency_Cleared [label="sensor, emergency_clear",fontsize=9];
+Emergency_Cleared -> Emergency_Active [label="emergency_trigger",fontsize=9];
+}
