@@ -1,16 +1,15 @@
 """
-visual.py - Caltrans & Municipal Public Works Edition.
-Traffic Light Controller & Emergency Vehicle Preemption (EVP) System.
+visual.py - Caltrans & Municipal Public Works Edition (Daytime High-Visibility).
+Traffic Light Controller & Emergency Vehicle Preemption (EVP) Simulation.
 
 Features:
-- Dual-canvas widescreen Caltrans Traffic Management Center (TMC) console (1360 x 780).
-- Pure formal DFA core M = (Q, Sigma, delta, q0, F) with full totality and acceptance tracking.
-- Highway Capacity Manual (HCM) Level of Service (LOS A - F) real-time analytics.
-- Real-time interactive Automata Inspector with animated active states and transition edges.
-- Realistic road geometry: asphalt textures, continental crosswalk markings, double-yellow
-  centerlines, inductive loop sensors, smooth car deceleration, brake lights, and Opticom EVP strobe.
-- One-click scenarios: Rush hour congestion, Code 3 priority, dual emergency arbitration.
-- Retains 100% backward compatibility with headless automated tests (test_optional.py).
+- Precision stop lines and safe standoff buffers before pedestrian crosswalks.
+- Mathematical traffic light housing sizing: 3 vertically arranged circles fit strictly inside.
+- Daytime environmental lighting: #76C66B natural green grass, #444B54 medium-dark asphalt,
+  and crisp #FFFFFF continental crosswalk stencils.
+- Microscopic vehicle car-following model with smooth acceleration/braking and non-overlapping queues.
+- Real-time Caltrans TMC telemetry with live DFA Automata graph inspector.
+- 100% backward compatibility with automated test suites (test_traffic.py, test_optional.py).
 """
 import math
 import os
@@ -29,62 +28,91 @@ from traffic_light.verification import verify_dfa
 # ----------------------------- DIMENSIONS & GEOMETRY -----------------------------
 SCREEN_W, SCREEN_H = 1360, 780
 SIM_W = 800
-C_X, C_Y = SIM_W // 2, SCREEN_H // 2   # (400, 390)
-ROAD = 110                            # road width
-HALF_ROAD = ROAD // 2                 # 55
+C_X, C_Y = SIM_W // 2, SCREEN_H // 2   # Center of intersection: (400, 390)
+ROAD = 110                            # Total road width (2 lanes: 55px each)
+HALF_ROAD = ROAD // 2                 # 55px
 
-# Intersection box boundaries
+# Intersection box boundaries (conflict zone)
 BOX_TOP = C_Y - HALF_ROAD             # 335
 BOX_BOTTOM = C_Y + HALF_ROAD          # 445
 BOX_LEFT = C_X - HALF_ROAD            # 345
 BOX_RIGHT = C_X + HALF_ROAD           # 455
 
-# Stop line coordinates for backward-compatibility with tests
-LINE = 335
-LINE_NS = BOX_TOP
-LINE_EW = BOX_LEFT
+# Crosswalk geometry (symmetrical on all 4 approaches)
+CROSSWALK_DEPTH = 20                  # Width of crossing strip along travel axis
+CROSSWALK_GAP = 6                     # Distance from intersection box edge to crosswalk
 
-CAR_LEN, CAR_W, GAP = 34, 18, 12
-SPEED, AMB_SPEED = 120, 240           # pixels per second
-LANE = {NS: C_X - 26, EW: C_Y + 26}   # normal car lane
-AMB_LANE = {NS: C_X + 26, EW: C_Y - 26} # emergency vehicle lane
+# Stop Line Positioning (Mandatory vehicle limit lines)
+# Must stop completely BEFORE the crosswalk with a safe buffer
+STOP_LINE_BUFFER = 12                 # Safe distance between stop line and crosswalk edge
+STOP_LINE_NS = BOX_TOP - CROSSWALK_GAP - CROSSWALK_DEPTH - STOP_LINE_BUFFER   # 335 - 6 - 20 - 12 = 297
+STOP_LINE_EW = BOX_LEFT - CROSSWALK_GAP - CROSSWALK_DEPTH - STOP_LINE_BUFFER  # 345 - 6 - 20 - 12 = 307
+
+# Exported for compatibility with legacy test references
+LINE = STOP_LINE_NS
+LINE_NS = STOP_LINE_NS
+LINE_EW = STOP_LINE_EW
+
+# Vehicle dimensions & dynamics
+CAR_LEN, CAR_W, GAP = 34, 18, 14
+SPEED, AMB_SPEED = 120.0, 240.0       # Pixels per second
+LANE = {NS: C_X - 27, EW: C_Y + 27}   # Normal car travel lane (centered in 55px lane)
+AMB_LANE = {NS: C_X + 27, EW: C_Y - 27} # Emergency vehicle clearance lane
 
 MIN_GREEN, MAX_GREEN = 4.0, 14.0
 FIXED_TIMINGS = {State.RED: 1.5, State.YELLOW: 2.8, State.EMERGENCY_CLEARED: 2.0}
 
-# Professional Caltrans palette
-COLOR_BG = (18, 22, 28)
-COLOR_ASPHALT = (38, 41, 46)
-COLOR_GRASS = (28, 48, 30)
-COLOR_CURB = (58, 62, 70)
-COLOR_YELLOW_LINE = (235, 195, 45)
-COLOR_WHITE_LINE = (235, 238, 242)
-COLOR_PANEL_BG = (22, 26, 33)
-COLOR_CARD_BG = (30, 36, 46)
-COLOR_CARD_BORDER = (46, 54, 68)
-COLOR_TEXT_PRIMARY = (240, 242, 245)
-COLOR_TEXT_MUTED = (145, 155, 170)
-COLOR_ACCENT_BLUE = (50, 130, 240)
-COLOR_ACCENT_AMBER = (245, 160, 35)
+# ----------------------------- TRAFFIC LIGHT HOUSING SPECS -----------------------------
+# Every housing contains 3 vertically stacked circular lights (Red, Yellow, Green)
+TL_HOUSING_W = 22                     # Outer width of rectangular housing
+TL_HOUSING_H = 68                     # Outer height of rectangular housing
+TL_LIGHT_RADIUS = 6                   # Circle radius (12px diameter < 22px housing width)
+TL_PADDING_Y = 12                     # Vertical center offset for top light
+TL_SPACING_Y = 22                     # Vertical distance between light centers
 
-LIGHT_COLORS = {
-    "RED": (245, 45, 45),
-    "YELLOW": (245, 205, 30),
-    "GREEN": (35, 215, 80),
+# ----------------------------- DAYTIME CALTRANS COLOR PALETTE -----------------------------
+COLOR_GRASS = (118, 198, 107)         # #76C66B Bright natural green grass
+COLOR_GRASS_ALT = (139, 207, 117)     # #8BCF75 Subtle mowing pattern accent
+COLOR_ASPHALT = (68, 75, 84)          # #444B54 Medium-dark roadway asphalt
+COLOR_CURB = (175, 184, 195)          # Concrete roadway curb border
+COLOR_YELLOW_LINE = (247, 200, 51)    # MUTCD standard highway yellow
+COLOR_WHITE_LINE = (255, 255, 255)    # Bright pure white thermoplastic markings
+
+# Signal light colors
+COLOR_TL_HOUSING = (24, 26, 30)       # Dark charcoal rectangular housing
+COLOR_TL_BORDER = (48, 52, 60)        # Housing contour outline
+SIGNAL_COLORS_ON = {
+    "RED": (255, 42, 42),
+    "YELLOW": (255, 210, 25),
+    "GREEN": (35, 230, 85),
 }
+SIGNAL_COLORS_OFF = {
+    "RED": (65, 24, 24),
+    "YELLOW": (65, 55, 18),
+    "GREEN": (18, 55, 28),
+}
+
+# Dashboard & Telemetry Palette
+COLOR_PANEL_BG = (26, 31, 39)
+COLOR_CARD_BG = (34, 41, 52)
+COLOR_CARD_BORDER = (50, 60, 75)
+COLOR_TEXT_PRIMARY = (245, 247, 250)
+COLOR_TEXT_MUTED = (150, 162, 178)
+COLOR_ACCENT_BLUE = (60, 140, 250)
+COLOR_ACCENT_AMBER = (245, 165, 40)
 
 
 # ----------------------------- VEHICLE MODEL -----------------------------
 class Vehicle:
-    """Microscopic vehicle model with smooth braking and lighting effects."""
+    """Microscopic vehicle model with car-following dynamics and safe bumper spacing."""
 
     PALETTE = [
-        (65, 120, 210),   # Oceanic blue
-        (160, 85, 195),   # Royal violet
-        (225, 130, 45),   # Sunset amber
-        (65, 180, 170),   # Caltrans teal
-        (185, 190, 200),  # Silver metallic
-        (215, 55, 55),    # Crimson sedan
+        (55, 125, 225),   # Blue sedan
+        (160, 85, 195),   # Purple sedan
+        (235, 130, 45),   # Orange coupe
+        (45, 185, 175),   # Teal hatchback
+        (190, 195, 205),  # Silver compact
+        (225, 55, 55),    # Red sedan
     ]
 
     def __init__(self, axis: str, emergency: bool = False):
@@ -93,13 +121,19 @@ class Vehicle:
         self.s: float = -CAR_LEN - 10.0
         self.target_speed: float = AMB_SPEED if emergency else SPEED
         self.current_speed: float = self.target_speed
-        self.colour = (252, 252, 255) if emergency else random.choice(self.PALETTE)
+        self.colour = (255, 255, 255) if emergency else random.choice(self.PALETTE)
         self.spawn_time = time.time()
         self.is_braking = False
 
     @property
     def front(self) -> float:
-        return self.s + CAR_LEN / 2
+        """Front bumper coordinate along the road axis."""
+        return self.s + CAR_LEN / 2.0
+
+    @property
+    def rear(self) -> float:
+        """Rear bumper coordinate along the road axis."""
+        return self.s - CAR_LEN / 2.0
 
     def xy(self) -> Tuple[float, float]:
         lane = AMB_LANE[self.axis] if self.emergency else LANE[self.axis]
@@ -143,7 +177,7 @@ class World:
             self.telemetry.record_evp_lock(0.0)
 
     def stop_line(self, axis: str) -> float:
-        return LINE_NS if axis == NS else LINE_EW
+        return STOP_LINE_NS if axis == NS else STOP_LINE_EW
 
     def waiting(self, axis: str) -> List[Vehicle]:
         sl = self.stop_line(axis)
@@ -154,9 +188,9 @@ class World:
         return [c for c in self.waiting(axis) if c.front > sl - 220]
 
     def is_loop_occupied(self, axis: str) -> bool:
-        """Inductive loop detector presence: vehicle over sensor zone."""
+        """Inductive loop detector presence: vehicle waiting over sensor zone."""
         sl = self.stop_line(axis)
-        return any(c.axis == axis and (sl - 75 <= c.front <= sl + 5) for c in self.cars)
+        return any(c.axis == axis and (sl - 60 <= c.front <= sl + 4) for c in self.cars)
 
     def update(self, dt: float):
         if self.is_paused:
@@ -175,7 +209,7 @@ class World:
 
         # Vehicle Generation
         self.t_spawn += effective_dt
-        if self.t_spawn > 1.2:
+        if self.t_spawn > 1.25:
             self.t_spawn = 0.0
             axis = random.choice((NS, EW))
             if not any(c.axis == axis and c.s < CAR_LEN * 2 and not c.emergency for c in self.cars):
@@ -207,39 +241,60 @@ class World:
             self.active_preemption_channel = None
 
     def move_cars(self, dt: float):
+        """
+        Microscopic vehicle movement with bumper-to-bumper collision safety
+        and strict compliance with stop lines before pedestrian crosswalks.
+        """
         lights = self.box.lights()
         for axis in (NS, EW):
             sl = self.stop_line(axis)
             road = sorted((c for c in self.cars if c.axis == axis and not c.emergency), key=lambda c: -c.s)
             leader = None
+
             for car in road:
-                target_stop = None
-                if lights[axis] != "GREEN" and car.front <= sl:
-                    target_stop = sl - CAR_LEN / 2
+                target_stop: Optional[float] = None
+                light_status = lights[axis]
+
+                # Stop line constraint: only applies before entering the intersection
+                # Vehicles that already crossed the stop line continue through safely
+                if light_status == "RED" and car.front <= sl:
+                    # Vehicle stops with front bumper 2px before the stop line
+                    target_stop = (sl - 2.0) - CAR_LEN / 2.0
+                elif light_status == "YELLOW":
+                    # Yellow light dilemma zone: stop if safe distance remains; otherwise proceed
+                    if car.front <= sl - 35.0:
+                        target_stop = (sl - 2.0) - CAR_LEN / 2.0
+
+                # Queue constraint: maintain strict bumper-to-bumper spacing behind leader
                 if leader is not None:
-                    lead_stop = leader.s - CAR_LEN - GAP
+                    lead_stop = (leader.rear - GAP) - CAR_LEN / 2.0
                     target_stop = min(target_stop, lead_stop) if target_stop is not None else lead_stop
 
                 if target_stop is not None:
                     dist = target_stop - car.s
-                    if dist <= 0:
+                    if dist <= 0.0:
                         car.current_speed = 0.0
                         car.is_braking = True
-                    elif dist < 130:
-                        decel_factor = max(0.1, dist / 130.0)
+                        car.s = target_stop
+                    elif dist < 120.0:
+                        # Smooth realistic deceleration curve
+                        decel_factor = max(0.12, dist / 120.0)
                         car.current_speed = car.target_speed * decel_factor
                         car.is_braking = True
+                        car.s = min(target_stop, car.s + car.current_speed * dt)
                     else:
-                        car.current_speed = min(car.target_speed, car.current_speed + 160 * dt)
+                        car.current_speed = min(car.target_speed, car.current_speed + 140.0 * dt)
                         car.is_braking = False
-                    car.s = min(target_stop, car.s + car.current_speed * dt)
+                        car.s = min(target_stop, car.s + car.current_speed * dt)
                 else:
-                    car.current_speed = min(car.target_speed, car.current_speed + 160 * dt)
+                    # Green light / free flow acceleration
+                    car.current_speed = min(car.target_speed, car.current_speed + 140.0 * dt)
                     car.is_braking = False
                     car.s += car.current_speed * dt
 
                 leader = car
 
+        # Emergency vehicles travel at high speed without stopping
         for car in self.cars:
             if car.emergency:
                 car.s += car.target_speed * dt
@@ -257,44 +312,41 @@ class World:
 
 
 # ----------------------------- RENDERING ENGINE -----------------------------
-def draw_halo_circle(surface: pygame.Surface, color: Tuple[int, int, int], center: Tuple[int, int], radius: int):
-    """Draw a soft luminous halo with smooth radial alpha attenuation."""
-    halo_surf = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-    cx, cy = radius, radius
-    r, g, b = color
-    for i in range(radius, 0, -2):
-        alpha = int(35 * (1.0 - (i / radius)))
-        pygame.draw.circle(halo_surf, (r, g, b, alpha), (cx, cy), i)
-    surface.blit(halo_surf, (center[0] - cx, center[1] - cy), special_flags=pygame.BLEND_ADD)
+def draw_traffic_light(screen: pygame.Surface, x: int, y: int, active_colour: str):
+    """
+    Render rectangular traffic light housing containing exactly 3 vertically stacked circles.
+    All 3 circles fit strictly INSIDE the housing without extending outside.
+    """
+    # 1. Dark rectangular housing
+    housing_rect = pygame.Rect(x, y, TL_HOUSING_W, TL_HOUSING_H)
+    pygame.draw.rect(screen, COLOR_TL_HOUSING, housing_rect, border_radius=4)
+    pygame.draw.rect(screen, COLOR_TL_BORDER, housing_rect, width=2, border_radius=4)
 
+    # 2. Three vertically arranged circular lights (Red top, Yellow middle, Green bottom)
+    cx = x + TL_HOUSING_W // 2
+    colors = ("RED", "YELLOW", "GREEN")
 
-def draw_light_head(screen: pygame.Surface, x: int, y: int, active_colour: str, vertical: bool = True):
-    """Draw NEMA-standard traffic signal head with visor hoods and glowing lenses."""
-    w, h = (24, 72) if vertical else (72, 24)
-    # Signal backplate and housing
-    pygame.draw.rect(screen, (16, 18, 22), (x - 2, y - 2, w + 4, h + 4), border_radius=5)
-    pygame.draw.rect(screen, (45, 50, 60), (x, y, w, h), border_radius=4)
-
-    names = ("RED", "YELLOW", "GREEN")
-    for i, name in enumerate(names):
-        if vertical:
-            cx, cy = x + 12, y + 12 + 24 * i
-        else:
-            cx, cy = x + 12 + 24 * i, y + 12
-
+    for i, name in enumerate(colors):
+        cy = y + TL_PADDING_Y + i * TL_SPACING_Y
         is_on = (name == active_colour)
-        col = LIGHT_COLORS[name] if is_on else (40, 44, 50)
 
+        # Inactive base circle
+        off_col = SIGNAL_COLORS_OFF[name]
+        pygame.draw.circle(screen, off_col, (cx, cy), TL_LIGHT_RADIUS)
+        pygame.draw.circle(screen, (38, 42, 50), (cx, cy), TL_LIGHT_RADIUS, width=1)
+
+        # Active illuminated circle (strictly contained inside the housing)
         if is_on:
-            draw_halo_circle(screen, LIGHT_COLORS[name], (cx, cy), 15)
-        pygame.draw.circle(screen, col, (cx, cy), 8)
-        if is_on:
+            on_col = SIGNAL_COLORS_ON[name]
+            # Saturated core lens
+            pygame.draw.circle(screen, on_col, (cx, cy), TL_LIGHT_RADIUS)
+            # Subtle specular reflection dot inside lens
             pygame.draw.circle(screen, (255, 255, 255), (cx - 2, cy - 2), 2)
 
 
 def draw_crosswalk(screen: pygame.Surface, rect: pygame.Rect, horizontal: bool = True):
-    """Draw standard Caltrans continental (piano-key) crosswalk markings."""
-    stripe_w = 14
+    """Draw crisp Caltrans continental (piano-key) crosswalk markings."""
+    stripe_w = 12
     stripe_gap = 10
     if horizontal:
         num = rect.width // (stripe_w + stripe_gap)
@@ -311,113 +363,120 @@ def draw_crosswalk(screen: pygame.Surface, rect: pygame.Rect, horizontal: bool =
 
 
 def draw_intersection_canvas(screen: pygame.Surface, world: World):
-    """Draw high-fidelity Caltrans intersection with asphalt, road markings, sensors, and vehicles."""
-    # Base terrain
-    pygame.draw.rect(screen, COLOR_GRASS, (0, 0, SIM_W, SCREEN_H))
+    """Draw daytime high-contrast intersection with bright grass and clean asphalt."""
+    # 1. Base terrain (bright natural grass with subtle landscape mowing stripes)
+    screen.fill(COLOR_GRASS)
+    for stripe_y in range(0, SCREEN_H, 60):
+        pygame.draw.rect(screen, COLOR_GRASS_ALT, (0, stripe_y, SIM_W, 30))
 
-    # Roadway asphalt
+    # 2. Roadway Asphalt (#444B54)
     road_rect_ns = pygame.Rect(BOX_LEFT, 0, ROAD, SCREEN_H)
     road_rect_ew = pygame.Rect(0, BOX_TOP, SIM_W, ROAD)
     pygame.draw.rect(screen, COLOR_ASPHALT, road_rect_ns)
     pygame.draw.rect(screen, COLOR_ASPHALT, road_rect_ew)
 
-    # Concrete Curbs
+    # 3. Road Curb Borders
     pygame.draw.rect(screen, COLOR_CURB, road_rect_ns, width=3)
     pygame.draw.rect(screen, COLOR_CURB, road_rect_ew, width=3)
-    # Re-fill intersection center to eliminate inner curbs
+    # Re-fill intersection core
     pygame.draw.rect(screen, COLOR_ASPHALT, (BOX_LEFT + 3, BOX_TOP + 3, ROAD - 6, ROAD - 6))
 
-    # Caltrans Continental Crosswalks
-    draw_crosswalk(screen, pygame.Rect(BOX_LEFT, BOX_TOP - 22, ROAD, 18), horizontal=True)
-    draw_crosswalk(screen, pygame.Rect(BOX_LEFT, BOX_BOTTOM + 4, ROAD, 18), horizontal=True)
-    draw_crosswalk(screen, pygame.Rect(BOX_LEFT - 22, BOX_TOP, 18, ROAD), horizontal=False)
-    draw_crosswalk(screen, pygame.Rect(BOX_RIGHT + 4, BOX_TOP, 18, ROAD), horizontal=False)
+    # 4. Symmetrical Continental Crosswalks
+    draw_crosswalk(screen, pygame.Rect(BOX_LEFT, BOX_TOP - CROSSWALK_GAP - CROSSWALK_DEPTH, ROAD, CROSSWALK_DEPTH), horizontal=True)
+    draw_crosswalk(screen, pygame.Rect(BOX_LEFT, BOX_BOTTOM + CROSSWALK_GAP, ROAD, CROSSWALK_DEPTH), horizontal=True)
+    draw_crosswalk(screen, pygame.Rect(BOX_LEFT - CROSSWALK_GAP - CROSSWALK_DEPTH, BOX_TOP, CROSSWALK_DEPTH, ROAD), horizontal=False)
+    draw_crosswalk(screen, pygame.Rect(BOX_RIGHT + CROSSWALK_GAP, BOX_TOP, CROSSWALK_DEPTH, ROAD), horizontal=False)
 
-    # Double Solid Yellow Centerlines
-    pygame.draw.line(screen, COLOR_YELLOW_LINE, (C_X - 2, 0), (C_X - 2, BOX_TOP - 24), 2)
-    pygame.draw.line(screen, COLOR_YELLOW_LINE, (C_X + 2, 0), (C_X + 2, BOX_TOP - 24), 2)
-    pygame.draw.line(screen, COLOR_YELLOW_LINE, (C_X - 2, BOX_BOTTOM + 24), (C_X - 2, SCREEN_H), 2)
-    pygame.draw.line(screen, COLOR_YELLOW_LINE, (C_X + 2, BOX_BOTTOM + 24), (C_X + 2, SCREEN_H), 2)
+    # 5. Yellow Double Centerlines
+    cw_outer_n = BOX_TOP - CROSSWALK_GAP - CROSSWALK_DEPTH - 2
+    cw_outer_s = BOX_BOTTOM + CROSSWALK_GAP + CROSSWALK_DEPTH + 2
+    cw_outer_w = BOX_LEFT - CROSSWALK_GAP - CROSSWALK_DEPTH - 2
+    cw_outer_e = BOX_RIGHT + CROSSWALK_GAP + CROSSWALK_DEPTH + 2
 
-    pygame.draw.line(screen, COLOR_YELLOW_LINE, (0, C_Y - 2), (BOX_LEFT - 24, C_Y - 2), 2)
-    pygame.draw.line(screen, COLOR_YELLOW_LINE, (0, C_Y + 2), (BOX_LEFT - 24, C_Y + 2), 2)
-    pygame.draw.line(screen, COLOR_YELLOW_LINE, (BOX_RIGHT + 24, C_Y - 2), (SIM_W, C_Y - 2), 2)
-    pygame.draw.line(screen, COLOR_YELLOW_LINE, (BOX_RIGHT + 24, C_Y + 2), (SIM_W, C_Y + 2), 2)
+    # NS Road Centerlines
+    pygame.draw.line(screen, COLOR_YELLOW_LINE, (C_X - 2, 0), (C_X - 2, cw_outer_n), 2)
+    pygame.draw.line(screen, COLOR_YELLOW_LINE, (C_X + 2, 0), (C_X + 2, cw_outer_n), 2)
+    pygame.draw.line(screen, COLOR_YELLOW_LINE, (C_X - 2, cw_outer_s), (C_X - 2, SCREEN_H), 2)
+    pygame.draw.line(screen, COLOR_YELLOW_LINE, (C_X + 2, cw_outer_s), (C_X + 2, SCREEN_H), 2)
 
-    # White Stop Bars (Caltrans Thermoplastic Stencils)
-    pygame.draw.line(screen, COLOR_WHITE_LINE, (BOX_LEFT, LINE_NS), (C_X, LINE_NS), 5)
-    pygame.draw.line(screen, COLOR_WHITE_LINE, (LINE_EW, C_Y), (LINE_EW, BOX_BOTTOM), 5)
+    # EW Road Centerlines
+    pygame.draw.line(screen, COLOR_YELLOW_LINE, (0, C_Y - 2), (cw_outer_w, C_Y - 2), 2)
+    pygame.draw.line(screen, COLOR_YELLOW_LINE, (0, C_Y + 2), (cw_outer_w, C_Y + 2), 2)
+    pygame.draw.line(screen, COLOR_YELLOW_LINE, (cw_outer_e, C_Y - 2), (SIM_W, C_Y - 2), 2)
+    pygame.draw.line(screen, COLOR_YELLOW_LINE, (cw_outer_e, C_Y + 2), (SIM_W, C_Y + 2), 2)
 
-    # Inductive Loop Detector Sensor Markings
-    ns_loop_col = (50, 225, 110) if world.is_loop_occupied(NS) else (80, 95, 110)
-    ew_loop_col = (50, 225, 110) if world.is_loop_occupied(EW) else (80, 95, 110)
-    # NS Loop in normal lane
-    pygame.draw.rect(screen, ns_loop_col, (C_X - 38, LINE_NS - 65, 24, 38), width=2, border_radius=3)
-    # EW Loop in normal lane
-    pygame.draw.rect(screen, ew_loop_col, (LINE_EW - 65, C_Y + 14, 38, 24), width=2, border_radius=3)
+    # 6. White Stop Lines (Located before the crosswalks)
+    pygame.draw.line(screen, COLOR_WHITE_LINE, (BOX_LEFT, STOP_LINE_NS), (C_X, STOP_LINE_NS), 4)
+    pygame.draw.line(screen, COLOR_WHITE_LINE, (STOP_LINE_EW, C_Y), (STOP_LINE_EW, BOX_BOTTOM), 4)
 
-    # Traffic Signals
+    # 7. Inductive Loop Sensors in pavement
+    ns_loop_col = (40, 235, 90) if world.is_loop_occupied(NS) else (115, 128, 142)
+    ew_loop_col = (40, 235, 90) if world.is_loop_occupied(EW) else (115, 128, 142)
+    pygame.draw.rect(screen, ns_loop_col, (C_X - 40, STOP_LINE_NS - 52, 26, 36), width=2, border_radius=3)
+    pygame.draw.rect(screen, ew_loop_col, (STOP_LINE_EW - 52, C_Y + 14, 36, 26), width=2, border_radius=3)
+
+    # 8. Traffic Signal Lights (Placed safely outside travel lanes)
     lights = world.box.lights()
-    draw_light_head(screen, BOX_LEFT - 32, LINE_NS - 78, lights[NS], vertical=True)
-    draw_light_head(screen, LINE_EW - 78, BOX_BOTTOM + 10, lights[EW], vertical=False)
+    # North-South Signal (Placed on NW curb, facing Southbound traffic)
+    draw_traffic_light(screen, BOX_LEFT - TL_HOUSING_W - 12, STOP_LINE_NS - 45, lights[NS])
+    # East-West Signal (Placed on SW curb, facing Eastbound traffic)
+    draw_traffic_light(screen, STOP_LINE_EW - 45, BOX_BOTTOM + 12, lights[EW])
 
-    # Opticom EVP Mast-Arm Detector & Strobe (Clean Caltrans optical receiver)
-    strobe_x, strobe_y = BOX_LEFT - 20, LINE_NS - 92
-    pygame.draw.rect(screen, (50, 55, 65), (strobe_x - 3, strobe_y - 8, 6, 16), border_radius=2)
+    # Opticom EVP Preemption Confirmation Strobe Indicator
+    strobe_x, strobe_y = BOX_LEFT - TL_HOUSING_W - 1, STOP_LINE_NS - 55
+    pygame.draw.rect(screen, (38, 42, 50), (strobe_x - 3, strobe_y - 6, 6, 12), border_radius=2)
     if world.box.state == State.EMERGENCY_ACTIVE:
-        is_strobe_on = (int(time.time() * 12) % 2 == 0)
-        strobe_col = (255, 255, 255) if is_strobe_on else (140, 150, 170)
-        draw_halo_circle(screen, (255, 255, 255), (strobe_x, strobe_y), 10)
-        pygame.draw.circle(screen, strobe_col, (strobe_x, strobe_y), 4)
+        is_flash = (int(time.time() * 12) % 2 == 0)
+        flash_col = (255, 255, 255) if is_flash else (140, 150, 165)
+        pygame.draw.circle(screen, flash_col, (strobe_x, strobe_y), 4)
     else:
-        pygame.draw.circle(screen, (80, 90, 100), (strobe_x, strobe_y), 3)
+        pygame.draw.circle(screen, (75, 85, 95), (strobe_x, strobe_y), 3)
 
-    # Vehicles Drawing
+    # 9. Vehicles Rendering
     for car in world.cars:
         x, y = car.xy()
         w, h = (CAR_W, CAR_LEN) if car.axis == NS else (CAR_LEN, CAR_W)
         car_rect = pygame.Rect(x - w / 2, y - h / 2, w, h)
 
-        # Vehicle Body Shadow & Base
-        pygame.draw.rect(screen, (15, 18, 22), (car_rect.x + 3, car_rect.y + 3, w, h), border_radius=4)
+        # Vehicle Drop Shadow
+        pygame.draw.rect(screen, (30, 35, 42), (car_rect.x + 2, car_rect.y + 2, w, h), border_radius=4)
+        # Vehicle Body
         pygame.draw.rect(screen, car.colour, car_rect, border_radius=4)
-        pygame.draw.rect(screen, (35, 40, 50), car_rect, width=1, border_radius=4)
+        pygame.draw.rect(screen, (28, 32, 38), car_rect, width=1, border_radius=4)
 
         # Windshield
         if car.axis == NS:
-            pygame.draw.rect(screen, (28, 42, 56), (car_rect.x + 2, car_rect.y + 8, w - 4, 7), border_radius=2)
+            pygame.draw.rect(screen, (35, 52, 70), (car_rect.x + 2, car_rect.y + 8, w - 4, 7), border_radius=2)
         else:
-            pygame.draw.rect(screen, (28, 42, 56), (car_rect.x + 8, car_rect.y + 2, 7, h - 4), border_radius=2)
+            pygame.draw.rect(screen, (35, 52, 70), (car_rect.x + 8, car_rect.y + 2, 7, h - 4), border_radius=2)
 
         # Headlights projecting forward
-        hl_color = (255, 255, 215)
+        hl_col = (255, 255, 215)
         if car.axis == NS:
-            pygame.draw.circle(screen, hl_color, (int(car_rect.left + 3), int(car_rect.bottom - 1)), 2)
-            pygame.draw.circle(screen, hl_color, (int(car_rect.right - 3), int(car_rect.bottom - 1)), 2)
+            pygame.draw.circle(screen, hl_col, (int(car_rect.left + 3), int(car_rect.bottom - 1)), 2)
+            pygame.draw.circle(screen, hl_col, (int(car_rect.right - 3), int(car_rect.bottom - 1)), 2)
         else:
-            pygame.draw.circle(screen, hl_color, (int(car_rect.right - 1), int(car_rect.top + 3)), 2)
-            pygame.draw.circle(screen, hl_color, (int(car_rect.right - 1), int(car_rect.bottom - 3)), 2)
+            pygame.draw.circle(screen, hl_col, (int(car_rect.right - 1), int(car_rect.top + 3)), 2)
+            pygame.draw.circle(screen, hl_col, (int(car_rect.right - 1), int(car_rect.bottom - 3)), 2)
 
-        # Brake Lights (Glow bright red when slowing down or waiting)
+        # Brake Lights (Illuminate red when slowing down or waiting)
         if car.is_braking and not car.emergency:
-            brake_col = (255, 30, 30)
+            brk_col = (255, 35, 35)
             if car.axis == NS:
-                pygame.draw.circle(screen, brake_col, (int(car_rect.left + 3), int(car_rect.top + 2)), 3)
-                pygame.draw.circle(screen, brake_col, (int(car_rect.right - 3), int(car_rect.top + 2)), 3)
+                pygame.draw.circle(screen, brk_col, (int(car_rect.left + 3), int(car_rect.top + 2)), 3)
+                pygame.draw.circle(screen, brk_col, (int(car_rect.right - 3), int(car_rect.top + 2)), 3)
             else:
-                pygame.draw.circle(screen, brake_col, (int(car_rect.left + 2), int(car_rect.top + 3)), 3)
-                pygame.draw.circle(screen, brake_col, (int(car_rect.left + 2), int(car_rect.bottom - 3)), 3)
+                pygame.draw.circle(screen, brk_col, (int(car_rect.left + 2), int(car_rect.top + 3)), 3)
+                pygame.draw.circle(screen, brk_col, (int(car_rect.left + 2), int(car_rect.bottom - 3)), 3)
 
-        # Emergency Siren Strobe Bar (Alternating Red/Blue High-Intensity Flashing)
+        # Emergency Siren Strobe Bar
         if car.emergency:
             strobe = (int(time.time() * 10) % 2 == 0)
-            siren_col1 = (255, 20, 20) if strobe else (30, 100, 255)
-            siren_col2 = (30, 100, 255) if strobe else (255, 20, 20)
+            s1 = (255, 25, 25) if strobe else (30, 110, 255)
+            s2 = (30, 110, 255) if strobe else (255, 25, 25)
             cx_c, cy_c = car_rect.center
-            draw_halo_circle(screen, siren_col1, (cx_c - 4, cy_c), 12)
-            draw_halo_circle(screen, siren_col2, (cx_c + 4, cy_c), 12)
-            pygame.draw.circle(screen, siren_col1, (cx_c - 4, cy_c), 4)
-            pygame.draw.circle(screen, siren_col2, (cx_c + 4, cy_c), 4)
+            pygame.draw.circle(screen, s1, (cx_c - 4, cy_c), 4)
+            pygame.draw.circle(screen, s2, (cx_c + 4, cy_c), 4)
 
 
 def draw_dashboard_panel(screen: pygame.Surface, fonts: Dict[str, pygame.font.Font], world: World):
@@ -442,7 +501,6 @@ def draw_dashboard_panel(screen: pygame.Surface, fonts: Dict[str, pygame.font.Fo
     pygame.draw.rect(screen, COLOR_CARD_BORDER, graph_rect, width=1, border_radius=6)
     screen.blit(fonts["bold_13"].render("DFA TOPOLOGY & ACTIVE STATE INSPECTOR", True, COLOR_ACCENT_BLUE), (dash_x + 28, 82))
 
-    # Node Coordinates (Layout: Directed state cycle + Emergency branches)
     nodes = {
         State.RED: (dash_x + 85, 155),
         State.GREEN: (dash_x + 265, 120),
@@ -451,7 +509,6 @@ def draw_dashboard_panel(screen: pygame.Surface, fonts: Dict[str, pygame.font.Fo
         State.EMERGENCY_CLEARED: (dash_x + 355, 235),
     }
 
-    # Draw Connecting Transition Edges
     edges = [
         (State.RED, State.GREEN, "timer"),
         (State.GREEN, State.YELLOW, "timer"),
@@ -472,28 +529,21 @@ def draw_dashboard_panel(screen: pygame.Surface, fonts: Dict[str, pygame.font.Fo
         edge_w = 3 if is_active_edge else 1
         pygame.draw.line(screen, edge_col, p1, p2, edge_w)
 
-    # Draw State Nodes
     curr_state = world.box.state
     for state, (nx, ny) in nodes.items():
         is_current = (state == curr_state)
         is_accepting = (state in world.box.dfa.ACCEPTING)
 
-        # Pulse halo for current active state
-        if is_current:
-            halo_color = (245, 50, 50) if "Emergency" in state.value else (50, 215, 90)
-            pulse_rad = int(22 + 3 * math.sin(time.time() * 8))
-            draw_halo_circle(screen, halo_color, (nx, ny), pulse_rad)
-
         node_bg = (38, 70, 110) if is_current else (28, 33, 42)
-        node_border = (60, 200, 100) if is_current else (75, 88, 105)
-        pygame.draw.circle(screen, node_bg, (nx, ny), 18)
-        pygame.draw.circle(screen, node_border, (nx, ny), 18, width=2)
+        node_border = (60, 220, 100) if is_current else (75, 88, 105)
+        node_r = 19 if is_current else 17
 
-        # Double-ring for Formal Accepting States F per Automata Theory
+        pygame.draw.circle(screen, node_bg, (nx, ny), node_r)
+        pygame.draw.circle(screen, node_border, (nx, ny), node_r, width=2)
+
         if is_accepting:
-            pygame.draw.circle(screen, (180, 195, 210), (nx, ny), 21, width=1)
+            pygame.draw.circle(screen, (180, 195, 210), (nx, ny), node_r + 3, width=1)
 
-        # Node Label
         short_names = {
             State.RED: "Red",
             State.GREEN: "Green",
@@ -519,7 +569,6 @@ def draw_dashboard_panel(screen: pygame.Surface, fonts: Dict[str, pygame.font.Fo
     los_txt = fonts["bold_20"].render(f"LOS {los.grade}", True, los.color_rgb)
     screen.blit(los_txt, (dash_x + 36, 338))
 
-    # Control Delay & Throughput Telemetry Columns
     avg_d = world.telemetry.average_delay
     vph = world.telemetry.equivalent_vph
     screen.blit(fonts["mono_12"].render(f"Avg Control Delay:  {avg_d:5.1f} s/veh ({los.label})", True, COLOR_TEXT_PRIMARY), (dash_x + 120, 330))
@@ -529,12 +578,11 @@ def draw_dashboard_panel(screen: pygame.Surface, fonts: Dict[str, pygame.font.Fo
     # NEMA Phase & Timing Progress Bar
     pbar_rect = pygame.Rect(dash_x + 28, 400, dash_w - 56, 16)
     pygame.draw.rect(screen, (22, 25, 32), pbar_rect, border_radius=4)
-    # Elapsed fill ratio
     max_t = MAX_GREEN if curr_state == State.GREEN else FIXED_TIMINGS.get(curr_state, 10.0)
     fill_ratio = min(1.0, world.t_state / max_t) if max_t > 0 else 0.0
     fill_w = int((dash_w - 56) * fill_ratio)
     if fill_w > 0:
-        bar_col = LIGHT_COLORS.get(curr_state.value.upper(), COLOR_ACCENT_BLUE)
+        bar_col = SIGNAL_COLORS_ON.get(curr_state.value.upper(), COLOR_ACCENT_BLUE)
         pygame.draw.rect(screen, bar_col, (dash_x + 28, 400, fill_w, 16), border_radius=4)
     screen.blit(fonts["mono_10"].render(f"State Elapsed: {world.t_state:4.1f}s / {max_t:.1f}s", True, COLOR_TEXT_PRIMARY), (dash_x + 36, 402))
 
@@ -589,7 +637,6 @@ def run(frames: Optional[int] = None, screenshot: Optional[Tuple[int, str]] = No
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("Caltrans Traffic Operations Center - DFA Signal Controller & EVP")
 
-    # Font dictionary with resilient fallbacks
     fonts = {
         "bold_20": pygame.font.SysFont("consolas,monospace", 20, bold=True),
         "bold_15": pygame.font.SysFont("consolas,monospace", 15, bold=True),
@@ -629,7 +676,6 @@ def run(frames: Optional[int] = None, screenshot: Optional[Tuple[int, str]] = No
                 elif ev.key == pygame.K_v:
                     print(world.verification_report.summary())
 
-        # Scripted triggers for automated regression tests
         if scripted and n in scripted:
             world.spawn_ambulance(scripted[n])
 
