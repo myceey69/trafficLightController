@@ -2,28 +2,39 @@
 
 ## Folder structure
 ```
-main.py                 CLI (core, no dependencies)
-visual.py               Pygame visualization (optional)
-requirements.txt        simpy, pygame (optional parts only)
-traffic_light/dfa.py            pure DFA: (Q, Σ, δ, q0, F)
-traffic_light/intersection.py   extended state, lights, safety check
-traffic_light/simulation.py     SimPy event simulation (optional)
-tests/                  unittest suites
-docs/                   state diagrams (PNG/DOT), report.md, screenshot
+main.py                            CLI (core, no dependencies)
+visual.py                          Caltrans TMC Widescreen Console & Automata Inspector (Pygame)
+requirements.txt                   simpy, pygame (optional parts only)
+traffic_light/dfa.py               pure DFA: (Q, Σ, δ, q0, F)
+traffic_light/intersection.py      extended state, lights, safety check
+traffic_light/simulation.py        SimPy event simulation
+traffic_light/verification.py      formal automata verification & civil safety audit
+traffic_light/metrics.py           Highway Capacity Manual (HCM) Level of Service (LOS) telemetry
+tests/                             unittest suites
+docs/                              state diagrams, report.md, Caltrans screenshots
 ```
 
-## Windows CMD
-```
-cd traffic_light_dfa
-python main.py                 REM assignment-literal table
-python main.py --recovery      REM with the Emergency_Cleared fix
+## Running the System
+```bash
+# Core CLI and formal verification
+python main.py --recovery
+python -m traffic_light.verification
+
+# Automated test suite (17 tests)
 python -m unittest discover -v
 
-pip install -r requirements.txt
-python -m traffic_light.simulation
-python visual.py               REM E / W = ambulance on NS / EW road, ESC quits
-python docs\make_diagram.py    REM needs Graphviz installed (dot)
+# Interactive Caltrans TMC Widescreen Console (1360x780)
+python visual.py
 ```
+
+### Interactive Simulation Hotkeys
+* `E`: Dispatch Emergency Ambulance on North-South corridor
+* `W`: Dispatch Emergency Ambulance on East-West corridor
+* `1`: Morning Rush Hour Traffic Surge
+* `SPACE`: Pause / Resume simulation
+* `+` / `-`: Increase / Decrease simulation speed (0.5x to 5.0x)
+* `V`: Print formal automata audit report to terminal
+* `ESC`: Clean shutdown
 Optional tests skip themselves if simpy/pygame are not installed.
 
 ## The assignment inconsistency
