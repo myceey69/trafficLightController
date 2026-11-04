@@ -1,5 +1,7 @@
 # Traffic Light Controller with Emergency Priority (DFA)
 
+<img width="1701" height="966" alt="image" src="https://github.com/user-attachments/assets/ee81a3bc-6433-475b-bda1-32f7c696f916" />
+
 ## Folder structure
 ```
 main.py                            CLI (core, no dependencies)
